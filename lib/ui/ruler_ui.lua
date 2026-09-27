@@ -179,6 +179,10 @@ function RulerUI:onPageUpdate(new_page)
         return
     end
 
+    -- Any page change ends an ongoing end-of-page wait, whether the
+    -- countdown ran out or the user turned the page early.
+    self:endDwell()
+
     -- This will only calculate the ruler position
     self.ruler:setInitialPositionOnPage(new_page)
 
@@ -244,6 +248,15 @@ function RulerUI:onTap(_, ges)
     local is_tap_on_ruler = ges.pos:intersectWith(self.touch_container_widget.dimen)
 
     if is_tap_on_ruler then
+        -- While auto scroll is dwelling on the last line of a page, tapping
+        -- the ruler restarts the end-of-page countdown for another full
+        -- round, so the user can re-read the rest of the page. This takes
+        -- precedence over toggling tap-to-move.
+        if self:isEndDwellWaiting() then
+            self:extendEndDwell()
+            return true
+        end
+
         if is_tap_to_move then
             -- logger.info("--- ReadingRuler: exit tap to move ---")
             self.ruler:exitTapToMoveMode()
@@ -296,7 +309,10 @@ end
 
 -- Auto scroll --
 -- Repeatedly move the ruler one line down every `auto_scroll_interval`
--- seconds until it is stopped or the ruler is disabled.
+-- seconds until it is stopped or the ruler is disabled. When the ruler
+-- reaches the last line of the page, optionally dwell there for
+-- `auto_scroll_end_interval` seconds before turning the page, so the
+-- user gets extra time to re-read the rest of the page.
 function RulerUI:startAutoScroll()
     self:stopAutoScroll()
 
@@ -325,17 +341,57 @@ function RulerUI:startAutoScroll()
         -- user is back to reading. @see autoturn.koplugin
         local top_wg = UIManager:getTopmostVisibleWidget() or {}
         if top_wg.name ~= "ReaderUI" then
+            -- Freeze the end-of-page countdown while unfocused: remember
+            -- "now" without charging the elapsed time against it, so the
+            -- wait resumes with the same remaining seconds on focus.
+            if self.end_dwell_remaining then
+                self.end_dwell_last_t = os.time()
+            end
             logger.dbg("ReadingRuler: auto scroll tick skipped, reader not focused")
             UIManager:scheduleIn(interval, tick)
             return
         end
 
-        self:handleLineNavigation("next")
+        -- End-of-page dwell: charge elapsed time against the countdown,
+        -- then either turn the page or keep waiting.
+        if self.end_dwell_remaining then
+            local now = os.time()
+            self.end_dwell_remaining = self.end_dwell_remaining - (now - (self.end_dwell_last_t or now))
+            self.end_dwell_last_t = now
 
-        -- Schedule the next tick (chain scheduling)
-        if self.auto_scroll_active then
+            if self.end_dwell_remaining > 0 then
+                UIManager:scheduleIn(math.min(interval, self.end_dwell_remaining), tick)
+                return
+            end
+
+            -- Countdown finished: clear the wait state and turn the page
+            -- (onPageUpdate clears it as well, this just makes it immediate).
+            self:endDwell()
+            self:handleLineNavigation("next")
             UIManager:scheduleIn(interval, tick)
+            return
         end
+
+        if self.ruler:moveToNextLine() then
+            self:updateUI()
+            UIManager:scheduleIn(interval, tick)
+            return
+        end
+
+        -- The ruler already sits on the last line of the page. Instead of
+        -- turning right away, optionally dwell for a while so the user can
+        -- look back at the rest of the page; tapping the ruler during the
+        -- wait restarts the countdown (another full round).
+        local dwell = tonumber(self.settings:get("auto_scroll_end_interval")) or 0
+        if dwell > 0 then
+            self:startDwell(dwell)
+            UIManager:scheduleIn(math.min(interval, dwell), tick)
+            return
+        end
+
+        -- End-of-page wait disabled: turn the page right away (old behaviour)
+        self:handleLineNavigation("next")
+        UIManager:scheduleIn(interval, tick)
     end
 
     self.auto_scroll_tick = tick
@@ -348,6 +404,44 @@ function RulerUI:stopAutoScroll()
         UIManager:unschedule(self.auto_scroll_tick)
         self.auto_scroll_tick = nil
     end
+    -- Drop any pending end-of-page countdown
+    self:endDwell()
+end
+
+-- End-of-page dwell --
+-- Countdown state: `end_dwell_remaining` holds the seconds still to wait
+-- on the last line; `end_dwell_last_t` is the timestamp of the last tick,
+-- used to charge only the time spent *with* reading focus against the
+-- countdown.
+function RulerUI:startDwell(seconds)
+    self.end_dwell_remaining = seconds
+    self.end_dwell_last_t = os.time()
+    self:displayNotification(string.format(
+        _("End of page: waiting %d s. Tap the ruler to wait another round."),
+        seconds))
+end
+
+function RulerUI:endDwell()
+    self.end_dwell_remaining = nil
+    self.end_dwell_last_t = nil
+end
+
+function RulerUI:isEndDwellWaiting()
+    return self.end_dwell_remaining ~= nil
+end
+
+--- Restart the end-of-page countdown for another full round of the
+--- configured wait (tap on the ruler while dwelling).
+function RulerUI:extendEndDwell()
+    local dwell = tonumber(self.settings:get("auto_scroll_end_interval")) or 0
+    if dwell <= 0 then
+        -- Fallback for the disabled setting: wait one regular interval
+        dwell = tonumber(self.settings:get("auto_scroll_interval")) or 5
+        if dwell < 1 then
+            dwell = 1
+        end
+    end
+    self:startDwell(dwell)
 end
 
 function RulerUI:isAutoScrollRunning()

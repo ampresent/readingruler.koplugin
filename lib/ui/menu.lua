@@ -115,6 +115,16 @@ function Menu:addToMainMenu(menu_items)
                 end,
             },
             {
+                text = _("End-of-page wait (seconds)"),
+                keep_menu_open = true,
+                enabled_func = function()
+                    return self.settings:get("auto_scroll_enabled")
+                end,
+                callback = function()
+                    self:showEndOfPageWaitDialog()
+                end,
+            },
+            {
                 text = _("Notifications"),
                 checked_func = function()
                     return self.settings:get("notification")
@@ -198,6 +208,28 @@ function Menu:showAutoScrollIntervalDialog()
 
             if self.settings:get("auto_scroll_enabled") then
                 self.ruler_ui:displayNotification(string.format(_("Auto scroll interval set to %d seconds"), new_interval.value))
+            end
+        end,
+    })
+
+    UIManager:show(spin_widget)
+end
+
+function Menu:showEndOfPageWaitDialog()
+    local spin_widget = SpinWidget:new({
+        value = self.settings:get("auto_scroll_end_interval"),
+        value_min = 0,
+        value_max = 3600,
+        value_step = 1,
+        value_hold_step = 10,
+        title_text = _("End-of-page wait (seconds)"),
+        info_text = _("When auto scroll reaches the last line of the page, wait this many seconds before turning to the next page, so you can re-read the rest of the page. Tap the ruler during the wait to wait another full round. 0 turns the page right away."),
+        ok_text = _("Set wait"),
+        callback = function(new_wait)
+            self.settings:set("auto_scroll_end_interval", new_wait.value)
+
+            if self.settings:get("auto_scroll_enabled") then
+                self.ruler_ui:displayNotification(string.format(_("End-of-page wait set to %d seconds"), new_wait.value))
             end
         end,
     })
