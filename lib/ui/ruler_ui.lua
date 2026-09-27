@@ -1,16 +1,39 @@
 local _ = require("gettext")
+local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
 local Event = require("ui/event")
 local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local Geom = require("ui/geometry")
-local LineWidget = require("ui/widget/linewidget")
 local MovableContainer = require("ui/widget/container/movablecontainer")
 local Notification = require("ui/widget/notification")
 local Screen = Device.screen
 local UIManager = require("ui/uimanager")
+local Widget = require("ui/widget/widget")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local logger = require("logger")
+
+-- Widget that draws one thin underline per covered text line.
+-- `offsets` holds the relative y offset of each underline.
+local MultiLineWidget = Widget:extend{
+    offsets = { 0 },
+    thickness = 2,
+    style = "solid",
+    background = Blitbuffer.COLOR_BLACK,
+}
+
+function MultiLineWidget:paintTo(bb, x, y)
+    if self.style == "none" then return end
+    for _, offset in ipairs(self.offsets) do
+        if self.style == "dashed" then
+            for i = 0, self.dimen.w - 20, 20 do
+                bb:paintRect(x + i, y + offset, 16, self.thickness, self.background)
+            end
+        else
+            bb:paintRect(x, y + offset, self.dimen.w, self.thickness, self.background)
+        end
+    end
+end
 
 local ignore_events = {
     "hold",
@@ -49,6 +72,10 @@ function RulerUI:init()
     self.touch_container_widget = nil
     self.movable_widget = nil
     self.is_built = false
+
+    -- Auto scroll state
+    self.auto_scroll_active = false
+    self.auto_scroll_tick = nil
 end
 
 -- Build the UI components needed, BUT not responsible for drawing them
@@ -61,9 +88,12 @@ function RulerUI:buildUI()
     local line_props = self.ruler:getRulerProperties()
     local geom = self.ruler:getRulerGeometry()
 
-    -- Create line widget
-    self.ruler_widget = LineWidget:new({
+    -- Create multi-line widget (one underline per covered line)
+    self.ruler_widget = MultiLineWidget:new({
         background = line_props.color,
+        style = line_props.style,
+        thickness = line_props.thickness,
+        offsets = geom.offsets or { 0 },
         dimen = Geom:new({ w = geom.w, h = geom.h }),
     })
 
@@ -97,7 +127,11 @@ function RulerUI:updateUI()
     local line_props = self.ruler:getRulerProperties()
     self.ruler_widget.background = line_props.color
     self.ruler_widget.style = line_props.style
-    self.ruler_widget.dimen.h = line_props.thickness
+    self.ruler_widget.thickness = line_props.thickness
+    -- One underline per covered line; `h` spans from the topmost underline
+    -- to the bottom of the current one (falls back to a single line)
+    self.ruler_widget.offsets = geom.offsets or { 0 }
+    self.ruler_widget.dimen.h = geom.h or line_props.thickness
 
     self:repaint()
 end
@@ -184,7 +218,12 @@ function RulerUI:setEnabled(enabled)
         self.ruler:setInitialPositionOnPage(self.document:getCurrentPage())
         self:updateUI()
         self:displayNotification(_("Reading ruler enabled"))
+        -- Start auto scroll if it was configured on
+        if self.settings:get("auto_scroll_enabled") then
+            self:startAutoScroll()
+        end
     else
+        self:stopAutoScroll()
         self.settings:disable()
         self:repaint()
         self:displayNotification(_("Reading ruler disabled"))
@@ -253,6 +292,80 @@ function RulerUI:onSwipe(_, ges)
     end
 
     return false
+end
+
+-- Auto scroll --
+-- Repeatedly move the ruler one line down every `auto_scroll_interval`
+-- seconds until it is stopped or the ruler is disabled.
+function RulerUI:startAutoScroll()
+    self:stopAutoScroll()
+
+    local interval = tonumber(self.settings:get("auto_scroll_interval")) or 5
+    if interval < 1 then
+        interval = 1
+    end
+
+    self.auto_scroll_active = true
+
+    local tick
+    tick = function()
+        -- Stop if we've been cancelled meanwhile, or if the ruler
+        -- is no longer enabled (e.g. user toggled it off, or document closed).
+        if not self.auto_scroll_active
+            or not self.settings:isEnabled()
+            or not self.settings:get("auto_scroll_enabled") then
+            self.auto_scroll_active = false
+            return
+        end
+
+        self:handleLineNavigation("next")
+
+        -- Schedule the next tick (chain scheduling)
+        if self.auto_scroll_active then
+            UIManager:scheduleIn(interval, tick)
+        end
+    end
+
+    self.auto_scroll_tick = tick
+    UIManager:scheduleIn(interval, tick)
+end
+
+function RulerUI:stopAutoScroll()
+    self.auto_scroll_active = false
+    if self.auto_scroll_tick then
+        UIManager:unschedule(self.auto_scroll_tick)
+        self.auto_scroll_tick = nil
+    end
+end
+
+function RulerUI:isAutoScrollRunning()
+    return self.auto_scroll_active
+end
+
+-- Restart the timer if it is currently running (e.g. after interval change)
+function RulerUI:restartAutoScrollIfRunning()
+    if self.auto_scroll_active then
+        self:startAutoScroll()
+    end
+end
+
+-- Toggle auto scroll from menu or gesture action
+function RulerUI:toggleAutoScroll()
+    local enabled = self.settings:toggle("auto_scroll_enabled")
+
+    if enabled then
+        -- Auto scroll only makes sense with the ruler visible
+        if not self.settings:isEnabled() then
+            self:setEnabled(true) -- setEnabled will start auto scroll
+        else
+            self:startAutoScroll()
+        end
+        local interval = tonumber(self.settings:get("auto_scroll_interval")) or 5
+        self:displayNotification(string.format(_("Auto scroll enabled (%d seconds per line)"), interval))
+    else
+        self:stopAutoScroll()
+        self:displayNotification(_("Auto scroll disabled"))
+    end
 end
 
 -- Notifications --

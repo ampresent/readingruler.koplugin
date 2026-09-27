@@ -127,6 +127,13 @@ function ReadingRuler:registerActions()
         title = _("Reading Ruler: toggle"),
         general = true,
     })
+
+    Dispatcher:registerAction("reading_ruler_auto_scroll_toggle", {
+        category = "none",
+        event = "ReadingRulerAutoScrollToggle",
+        title = _("Reading Ruler: toggle auto scroll"),
+        general = true,
+    })
 end
 
 function ReadingRuler:addToMainMenu(menu_items)
@@ -141,6 +148,11 @@ end
 function ReadingRuler:onPageUpdate(new_page)
     -- logger.info("--- ReadingRuler:onPageUpdate ---")
     return self.ruler_ui:onPageUpdate(new_page)
+end
+
+function ReadingRuler:onCloseDocument()
+    -- Make sure the auto scroll timer doesn't outlive the document
+    self.ruler_ui:stopAutoScroll()
 end
 
 -- Gesture Events --
@@ -174,6 +186,10 @@ function ReadingRuler:onReadingRulerToggle()
     local state = not self.settings:get("enabled")
     -- logger.info("--- ReadingRulerToggle to:", state, "---")
     self.ruler_ui:setEnabled(state)
+end
+
+function ReadingRuler:onReadingRulerAutoScrollToggle()
+    self.ruler_ui:toggleAutoScroll()
 end
 
 return ReadingRuler

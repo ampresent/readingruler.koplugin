@@ -10,6 +10,9 @@ local DEFAULTS = {
     line_intensity = 0.7,
     navigation_mode = "tap", -- tap, swipe, none
     notification = true,
+    auto_scroll_enabled = false,
+    auto_scroll_interval = 5, -- seconds per line
+    line_count = 1, -- number of lines covered by the ruler (1 = thin underline)
 }
 
 ---@class Settings
