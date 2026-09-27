@@ -155,6 +155,18 @@ function ReadingRuler:onCloseDocument()
     self.ruler_ui:stopAutoScroll()
 end
 
+-- Suspend/Resume Events --
+-- Pause the auto scroll timer while the device is locked, and restart it
+-- on wake-up. Without this, the chained scheduleIn timer keeps advancing
+-- the ruler (and turning pages) while the screensaver is showing.
+function ReadingRuler:onSuspend()
+    self.ruler_ui:pauseAutoScrollForSuspend()
+end
+
+function ReadingRuler:onResume()
+    self.ruler_ui:resumeAutoScrollAfterSuspend()
+end
+
 -- Gesture Events --
 function ReadingRuler:onSwipe(arg, ges)
     -- logger.info("--- ReadingRuler:onSwipe ---")

@@ -318,6 +318,18 @@ function RulerUI:startAutoScroll()
             return
         end
 
+        -- Skip this tick when the reading view does not have focus: with a
+        -- menu, dialog, dictionary popup or the screensaver on top, the
+        -- topmost visible widget is not ReaderUI. We keep the timer chain
+        -- alive but do not advance the ruler (nor turn pages) until the
+        -- user is back to reading. @see autoturn.koplugin
+        local top_wg = UIManager:getTopmostVisibleWidget() or {}
+        if top_wg.name ~= "ReaderUI" then
+            logger.dbg("ReadingRuler: auto scroll tick skipped, reader not focused")
+            UIManager:scheduleIn(interval, tick)
+            return
+        end
+
         self:handleLineNavigation("next")
 
         -- Schedule the next tick (chain scheduling)
@@ -345,6 +357,32 @@ end
 -- Restart the timer if it is currently running (e.g. after interval change)
 function RulerUI:restartAutoScrollIfRunning()
     if self.auto_scroll_active then
+        self:startAutoScroll()
+    end
+end
+
+-- Suspend/resume support --
+-- Remember whether auto scroll was running and stop the timer, so it does
+-- not fire while the device is locked (the chained scheduleIn timers would
+-- otherwise keep advancing the ruler, and even turn pages, while the
+-- screen is off or showing the screensaver).
+function RulerUI:pauseAutoScrollForSuspend()
+    self.auto_scroll_paused = self.auto_scroll_active
+    if self.auto_scroll_paused then
+        logger.dbg("ReadingRuler: pausing auto scroll for suspend")
+    end
+    self:stopAutoScroll()
+end
+
+-- Restart auto scroll on wake-up, but only if it was actually running
+-- before the device was suspended.
+function RulerUI:resumeAutoScrollAfterSuspend()
+    if not self.auto_scroll_paused then
+        return
+    end
+    self.auto_scroll_paused = nil
+    if self.settings:isEnabled() and self.settings:get("auto_scroll_enabled") then
+        logger.dbg("ReadingRuler: resuming auto scroll after resume")
         self:startAutoScroll()
     end
 end
