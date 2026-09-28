@@ -125,25 +125,6 @@ function Menu:addToMainMenu(menu_items)
                 end,
             },
             {
-                text = _("Show countdown in the footer"),
-                keep_menu_open = true,
-                enabled_func = function()
-                    return self.settings:get("auto_scroll_enabled")
-                        and (tonumber(self.settings:get("auto_scroll_end_interval")) or 0) > 0
-                end,
-                checked_func = function()
-                    return self.settings:get("end_of_page_indicator")
-                end,
-                callback = function()
-                    self.settings:toggle("end_of_page_indicator")
-                    self.ruler_ui:updateDwellIndicator()
-                    self.ruler_ui:displayNotification(
-                        self.settings:get("end_of_page_indicator")
-                            and _("Footer countdown shown")
-                            or _("Footer countdown hidden"))
-                end,
-            },
-            {
                 text = _("Notifications"),
                 checked_func = function()
                     return self.settings:get("notification")

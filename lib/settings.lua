@@ -13,7 +13,6 @@ local DEFAULTS = {
     auto_scroll_enabled = false,
     auto_scroll_interval = 5, -- seconds per line
     auto_scroll_end_interval = 5, -- seconds to dwell on the last line before turning the page (0 = turn right away)
-    end_of_page_indicator = false, -- show the countdown as a clock-face icon in the footer
     line_count = 1, -- number of lines covered by the ruler (1 = thin underline)
 }
 
