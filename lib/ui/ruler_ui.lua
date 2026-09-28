@@ -13,6 +13,8 @@ local Widget = require("ui/widget/widget")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local logger = require("logger")
 
+local StatusIndicator = require("lib/ui/status_icon")
+
 -- Widget that draws one thin underline per covered text line.
 -- `offsets` holds the relative y offset of each underline.
 local MultiLineWidget = Widget:extend{
@@ -76,6 +78,14 @@ function RulerUI:init()
     -- Auto scroll state
     self.auto_scroll_active = false
     self.auto_scroll_tick = nil
+
+    -- Optional footer countdown indicator (clock-face emoji). It is driven
+    -- from the end-of-page dwell state instead of showing notifications.
+    self.dwell_indicator = StatusIndicator.DwellIndicator:new{
+        ui = self.ui,
+        getRemaining = function() return self.end_dwell_remaining end,
+        getTotal = function() return self.end_dwell_total end,
+    }
 end
 
 -- Build the UI components needed, BUT not responsible for drawing them
@@ -170,6 +180,25 @@ function RulerUI:paintTo(bb, x, y)
         -- logger.info("--- RulerUI:paintTo ---")
         self.movable_widget:paintTo(bb, x, y)
     end
+
+    -- Footer countdown indicator: draws itself at its own absolute position,
+    -- so the x/y passed here are ignored by it on purpose.
+    if self.dwell_indicator and self.settings:get("end_of_page_indicator") then
+        self.dwell_indicator:paintTo(bb, x, y)
+    end
+end
+
+--- Push the current countdown state into the footer indicator.
+--- Called whenever the dwell state changes or the remaining seconds tick.
+function RulerUI:updateDwellIndicator()
+    if not self.dwell_indicator then
+        return
+    end
+    if not self.settings:get("end_of_page_indicator") then
+        self.dwell_indicator:clear()
+        return
+    end
+    self.dwell_indicator:refresh()
 end
 
 -- In each page update, we need to calculate the coordinates of the ruler line
@@ -360,6 +389,8 @@ function RulerUI:startAutoScroll()
             self.end_dwell_last_t = now
 
             if self.end_dwell_remaining > 0 then
+                -- Advance the footer clock face
+                self:updateDwellIndicator()
                 UIManager:scheduleIn(math.min(interval, self.end_dwell_remaining), tick)
                 return
             end
@@ -412,18 +443,20 @@ end
 -- Countdown state: `end_dwell_remaining` holds the seconds still to wait
 -- on the last line; `end_dwell_last_t` is the timestamp of the last tick,
 -- used to charge only the time spent *with* reading focus against the
--- countdown.
+-- countdown. The remaining seconds are surfaced by the optional footer
+-- indicator instead of a notification popup (@see lib/ui/status_icon.lua).
 function RulerUI:startDwell(seconds)
     self.end_dwell_remaining = seconds
     self.end_dwell_last_t = os.time()
-    self:displayNotification(string.format(
-        _("End of page: waiting %d s. Tap the ruler to wait another round."),
-        seconds))
+    self.end_dwell_total = seconds
+    self:updateDwellIndicator()
 end
 
 function RulerUI:endDwell()
     self.end_dwell_remaining = nil
     self.end_dwell_last_t = nil
+    self.end_dwell_total = nil
+    self:updateDwellIndicator()
 end
 
 function RulerUI:isEndDwellWaiting()
