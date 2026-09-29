@@ -248,15 +248,6 @@ function RulerUI:onTap(_, ges)
     local is_tap_on_ruler = ges.pos:intersectWith(self.touch_container_widget.dimen)
 
     if is_tap_on_ruler then
-        -- While auto scroll is dwelling on the last line of a page, tapping
-        -- the ruler restarts the end-of-page countdown for another full
-        -- round, so the user can re-read the rest of the page. This takes
-        -- precedence over toggling tap-to-move.
-        if self:isEndDwellWaiting() then
-            self:extendEndDwell()
-            return true
-        end
-
         if is_tap_to_move then
             -- logger.info("--- ReadingRuler: exit tap to move ---")
             self.ruler:exitTapToMoveMode()
@@ -380,8 +371,7 @@ function RulerUI:startAutoScroll()
 
         -- The ruler already sits on the last line of the page. Instead of
         -- turning right away, optionally dwell for a while so the user can
-        -- look back at the rest of the page; tapping the ruler during the
-        -- wait restarts the countdown (another full round).
+        -- look back at the rest of the page before it turns.
         local dwell = tonumber(self.settings:get("auto_scroll_end_interval")) or 0
         if dwell > 0 then
             self:startDwell(dwell)
@@ -425,20 +415,6 @@ end
 
 function RulerUI:isEndDwellWaiting()
     return self.end_dwell_remaining ~= nil
-end
-
---- Restart the end-of-page countdown for another full round of the
---- configured wait (tap on the ruler while dwelling).
-function RulerUI:extendEndDwell()
-    local dwell = tonumber(self.settings:get("auto_scroll_end_interval")) or 0
-    if dwell <= 0 then
-        -- Fallback for the disabled setting: wait one regular interval
-        dwell = tonumber(self.settings:get("auto_scroll_interval")) or 5
-        if dwell < 1 then
-            dwell = 1
-        end
-    end
-    self:startDwell(dwell)
 end
 
 function RulerUI:isAutoScrollRunning()

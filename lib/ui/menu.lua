@@ -223,7 +223,7 @@ function Menu:showEndOfPageWaitDialog()
         value_step = 1,
         value_hold_step = 10,
         title_text = _("End-of-page wait (seconds)"),
-        info_text = _("When auto scroll reaches the last line of the page, wait this many seconds before turning to the next page, so you can re-read the rest of the page. Tap the ruler during the wait to wait another full round. 0 turns the page right away."),
+        info_text = _("When auto scroll reaches the last line of the page, wait this many seconds before turning to the next page, so you can re-read the rest of the page. 0 turns the page right away."),
         ok_text = _("Set wait"),
         callback = function(new_wait)
             self.settings:set("auto_scroll_end_interval", new_wait.value)
