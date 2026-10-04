@@ -131,6 +131,9 @@ function RulerUI:updateUI()
     -- One underline per covered line; `h` spans from the topmost underline
     -- to the bottom of the current one (falls back to a single line)
     self.ruler_widget.offsets = geom.offsets or { 0 }
+    -- Width too: after a rotation the screen width changes, and a stale
+    -- width would leave the underline short of the right screen edge.
+    self.ruler_widget.dimen.w = geom.w or self.ruler_widget.dimen.w
     self.ruler_widget.dimen.h = geom.h or line_props.thickness
 
     self:repaint()

@@ -19,14 +19,28 @@ function Ruler:new(o)
     o.current_line_y = nil
     o.current_line_x = nil
     o.current_line_idx = nil -- index of the anchored line in getUniqueLines()
-    o.screen_height = Device.screen:getHeight()
-    o.screen_width = Device.screen:getWidth()
     o.cached_texts = nil
     o.cached_texts_page = nil
+    o.cached_screen_w = nil -- screen dims when cached_texts was built
+    o.cached_screen_h = nil
     o.last_page = 0
     o.tap_to_move = false
 
     return o
+end
+
+--- Screen dims, queried live on every call. The plugin used to capture
+--- these once at start-up, which froze the ruler at the portrait width:
+--- after rotating the device (e.g. a Kindle turned 90 degrees) the
+--- underline no longer reached the right edge of the screen.
+---@return number
+function Ruler:getScreenWidth()
+    return Device.screen:getWidth()
+end
+
+---@return number
+function Ruler:getScreenHeight()
+    return Device.screen:getHeight()
 end
 
 --- Move the anchor to the line at `idx` (in getUniqueLines()), remembering
@@ -215,6 +229,15 @@ end
 function Ruler:getTexts(ignore_cache)
     local page = self.document:getCurrentPage()
 
+    -- A rotation (or any resize) swaps the screen dims: cached line boxes
+    -- were measured in the old orientation and must not survive it, even
+    -- on the same page.
+    if self.cached_texts
+        and (self.cached_screen_w ~= self:getScreenWidth()
+            or self.cached_screen_h ~= self:getScreenHeight()) then
+        self.cached_texts = nil
+    end
+
     if not ignore_cache and self.cached_texts and self.cached_texts_page == page then
         -- logger.info("--- Ruler: cache hit ---")
         return self.cached_texts
@@ -225,7 +248,7 @@ function Ruler:getTexts(ignore_cache)
     --- TODO: handle multi column
     local texts = self.ui.document:getTextFromPositions(
         { x = 0, y = 0, page = page },
-        { x = self.screen_width, y = self.screen_height },
+        { x = self:getScreenWidth(), y = self:getScreenHeight() },
         true
     )
 
@@ -238,6 +261,8 @@ function Ruler:getTexts(ignore_cache)
 
     self.cached_texts = texts
     self.cached_texts_page = page
+    self.cached_screen_w = self:getScreenWidth()
+    self.cached_screen_h = self:getScreenHeight()
 
     return texts
 end
@@ -332,7 +357,7 @@ function Ruler:getRulerGeometry()
         return {
             x = self.current_line_x,
             y = self.current_line_y,
-            w = self.screen_width,
+            w = self:getScreenWidth(),
             h = thickness,
             offsets = { 0 },
         }
@@ -347,7 +372,7 @@ function Ruler:getRulerGeometry()
     return {
         x = self.current_line_x,
         y = ys[1],
-        w = self.screen_width,
+        w = self:getScreenWidth(),
         h = offsets[#offsets] + thickness,
         offsets = offsets,
     }
