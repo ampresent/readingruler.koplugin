@@ -186,8 +186,14 @@ function RulerUI:onPageUpdate(new_page)
     -- countdown ran out or the user turned the page early.
     self:endDwell()
 
+    -- A page change while the auto scroll timer runs was requested by the
+    -- timer itself, not by the user. Tell the ruler apart so going back
+    -- under auto scroll can restart from the top of the page.
+    local auto_scroll = self.auto_scroll_tick ~= nil
+        and self.settings:get("auto_scroll_enabled") == true
+
     -- This will only calculate the ruler position
-    self.ruler:setInitialPositionOnPage(new_page)
+    self.ruler:setInitialPositionOnPage(new_page, auto_scroll)
 
     -- After calculating the position, we need to update the UI
     self:updateUI()

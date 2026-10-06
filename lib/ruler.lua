@@ -93,7 +93,13 @@ function Ruler:getLineCount()
     return count
 end
 
-function Ruler:setInitialPositionOnPage(new_page)
+--- Position the ruler on a newly shown page.
+--- `auto_scroll` marks a page change driven by the auto scroll timer (as
+--- opposed to a manual page turn by the user), which changes where the
+--- ruler should land when going backwards.
+---@param new_page number
+---@param auto_scroll? boolean
+function Ruler:setInitialPositionOnPage(new_page, auto_scroll)
     local lines = self:getUniqueLines()
     if #lines < 1 then
         self.current_line_idx = nil
@@ -111,7 +117,14 @@ function Ruler:setInitialPositionOnPage(new_page)
     -- away: bottom line of the first block when moving next, bottom line
     -- of the last block when moving previous, first block on page jumps.
     local line = math.min(self:getLineCount(), #lines)
-    if not is_jump and direction == "prev" then
+
+    -- Going back while auto scrolling re-reads the page from the top: the
+    -- user asked for the previous page, not for its last line. Landing on
+    -- the last line would leave the wait-and-turn logic to immediately
+    -- jump forward again.
+    -- A manual turn back keeps the old behaviour (anchor at the bottom),
+    -- so putting the ruler back where it was still works.
+    if not is_jump and direction == "prev" and not auto_scroll then
         line = #lines
     end
 
